@@ -6,22 +6,19 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpServletResponseWrapper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
-import java.util.HashMap;
-import java.util.Map;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class LoggingHttpServletResponseWrapper extends HttpServletResponseWrapper {
 
+	private ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
 	private final LoggingServletOutpuStream loggingServletOutpuStream = new LoggingServletOutpuStream();
 
-	private final HttpServletResponse delegate;
 
 	public LoggingHttpServletResponseWrapper(HttpServletResponse response) {
 		super(response);
-		delegate = response;
 	}
 
 	@Override
@@ -29,35 +26,27 @@ public class LoggingHttpServletResponseWrapper extends HttpServletResponseWrappe
 		return loggingServletOutpuStream;
 	}
 
-	@Override
-	public PrintWriter getWriter() {
-		return new PrintWriter(loggingServletOutpuStream.baos);
-	}
-
-	public Map<String, String> getHeaders() {
-		Map<String, String> headers = new HashMap<>(0);
-		for (String headerName : getHeaderNames()) {
-			headers.put(headerName, getHeader(headerName));
-		}
-		return headers;
-	}
-
-	public String getContent() {
+	public String getContent() throws IOException
+	{
 		try {
-			String responseEncoding = delegate.getCharacterEncoding();
-			return loggingServletOutpuStream.baos.toString(responseEncoding != null ? responseEncoding : UTF_8.name());
+			baos.flush();
+			return baos.toString(UTF_8.name());
 		} catch (UnsupportedEncodingException e) {
-			return "[UNSUPPORTED ENCODING]";
+			throw new RuntimeException(e);
 		}
 	}
-
-	public byte[] getContentAsBytes() {
-		return loggingServletOutpuStream.baos.toByteArray();
+	private void writeToOriginal(byte[] b) throws IOException
+	{
+		super.getOutputStream().write(b);
 	}
+
+	private void writeToOriginal(int b) throws IOException
+	{
+		super.getOutputStream().write(b);
+	}
+
 
 	private class LoggingServletOutpuStream extends ServletOutputStream {
-
-		private ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
 		@Override
 		public boolean isReady() {
@@ -70,18 +59,16 @@ public class LoggingHttpServletResponseWrapper extends HttpServletResponseWrappe
 		}
 
 		@Override
-		public void write(int b) {
-			baos.write(b);
+		public void write(int b) throws IOException
+		{
+			LoggingHttpServletResponseWrapper.this.baos.write(b);
+			LoggingHttpServletResponseWrapper.this.writeToOriginal(b);
 		}
 
 		@Override
 		public void write(byte[] b) throws IOException {
-			baos.write(b);
-		}
-
-		@Override
-		public void write(byte[] b, int off, int len) {
-			baos.write(b, off, len);
+			LoggingHttpServletResponseWrapper.this.baos.write(b);
+			LoggingHttpServletResponseWrapper.this.writeToOriginal(b);
 		}
 	}
 }

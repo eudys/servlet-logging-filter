@@ -27,9 +27,11 @@ import java.util.stream.Collectors;
 
 public class LoggingHttpServletRequestWrapper extends HttpServletRequestWrapper {
 
-	private static final String FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
+	//private static final String FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
+	private static final String JSON_CONTENT_TYPE = "application/json";
+	private static final String XML_CONTENT_TYPE = "application/xml";
 
-	private static final String METHOD_POST = "POST";
+	//private static final String METHOD_POST = "POST";
 
 	private byte[] content;
 
@@ -40,10 +42,10 @@ public class LoggingHttpServletRequestWrapper extends HttpServletRequestWrapper 
 	public LoggingHttpServletRequestWrapper(HttpServletRequest request) {
 		super(request);
 		this.delegate = request;
-		if (isFormPost()) {
-			this.parameterMap = request.getParameterMap();
-		} else {
+		if (isApiCall()) {
 			this.parameterMap = Collections.emptyMap();
+		} else {
+			this.parameterMap = request.getParameterMap();
 		}
 	}
 
@@ -101,14 +103,13 @@ public class LoggingHttpServletRequestWrapper extends HttpServletRequestWrapper 
 
 	public String getContent() {
 		try {
-			if (this.parameterMap.isEmpty()) {
+			if (isApiCall()) {
 				content = IOUtils.toByteArray(delegate.getInputStream());
 			} else {
 				content = getContentFromParameterMap(this.parameterMap);
 			}
-			String requestEncoding = delegate.getCharacterEncoding();
-			String normalizedContent = StringUtils.normalizeSpace(new String(content, requestEncoding != null ? requestEncoding : StandardCharsets.UTF_8.name()));
-			return StringUtils.isBlank(normalizedContent) ? "[EMPTY]" : normalizedContent;
+			String normalizedContent = StringUtils.normalizeSpace(new String(content, StandardCharsets.UTF_8.name()));
+			return normalizedContent;
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
 		}
@@ -121,7 +122,7 @@ public class LoggingHttpServletRequestWrapper extends HttpServletRequestWrapper 
 		}).collect(Collectors.joining("&")).getBytes();
 	}
 
-	public Map<String, String> getHeaders() {
+/*	public Map<String, String> getHeaders() {
 		Map<String, String> headers = new HashMap<>(0);
 		Enumeration<String> headerNames = getHeaderNames();
 		while (headerNames.hasMoreElements()) {
@@ -131,7 +132,7 @@ public class LoggingHttpServletRequestWrapper extends HttpServletRequestWrapper 
 			}
 		}
 		return headers;
-	}
+	}*/
 
 	public Map<String, String> getParameters() {
 		return getParameterMap().entrySet().stream().collect(Collectors.toMap(Entry::getKey, e -> {
@@ -140,9 +141,25 @@ public class LoggingHttpServletRequestWrapper extends HttpServletRequestWrapper 
 		}));
 	}
 
-	public boolean isFormPost() {
+/*	public boolean isFormPost() {
 		String contentType = getContentType();
 		return (contentType != null && contentType.contains(FORM_CONTENT_TYPE) && METHOD_POST.equalsIgnoreCase(getMethod()));
+	}*/
+
+	public boolean isApiCall(){
+
+		boolean isApiCall = false;
+		String contentType = getContentType();
+
+		if(JSON_CONTENT_TYPE.equals(contentType)){
+			isApiCall = true;
+		}else if(XML_CONTENT_TYPE.equals(contentType)){
+			isApiCall = true;
+		}else if(getRequestURI().contains("rest")){
+			isApiCall = true;
+		}
+
+		return isApiCall;
 	}
 
 	@SuppressWarnings({"squid:S1150"})
@@ -175,6 +192,13 @@ public class LoggingHttpServletRequestWrapper extends HttpServletRequestWrapper 
 
 		@Override
 		public boolean isFinished() {
+			try
+			{
+				return is.available() == 0;
+			}
+			catch (IOException e)
+			{
+			}
 			return true;
 		}
 
